@@ -1,0 +1,15 @@
+{
+	"name": "retailadfdivya2026",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "centralindia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "3fe7274b-315a-4fa4-95ad-169596f7b1ff",
+		"tenantId": "9db75bc0-28ab-4920-92d9-d70b989353b2"
+	}
+}

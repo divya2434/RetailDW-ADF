@@ -1,0 +1,31 @@
+{
+	"name": "copy_practice",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "SqlServer1",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"pSchemaName": {
+				"type": "string",
+				"defaultValue": "@item().SchemaName"
+			},
+			"pTableName": {
+				"type": "string",
+				"defaultValue": "@item().DestinationTable"
+			},
+			"pWatermarkColumn": {
+				"type": "string",
+				"defaultValue": "@item().WatermarkColumn"
+			},
+			"pWatermarkValue": {
+				"type": "string",
+				"defaultValue": "@item().WatermarkValue"
+			}
+		},
+		"annotations": [],
+		"type": "SqlServerTable",
+		"schema": []
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

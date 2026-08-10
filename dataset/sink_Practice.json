@@ -1,0 +1,50 @@
+{
+	"name": "sink_Practice",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "AzureDataLakeStorage1",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"pSchemaName": {
+				"type": "string",
+				"defaultValue": "@item().SchemaName"
+			},
+			"pTableName": {
+				"type": "string",
+				"defaultValue": "@item().DestinationTable"
+			}
+		},
+		"annotations": [],
+		"type": "DelimitedText",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": {
+					"value": "@concat(dataset().pTableName,'.csv')",
+					"type": "Expression"
+				},
+				"folderPath": {
+					"value": "@concat(dataset().pSchemaName,'.',dataset().pTableName)",
+					"type": "Expression"
+				},
+				"fileSystem": "bronze1"
+			},
+			"columnDelimiter": ",",
+			"escapeChar": "\\",
+			"firstRowAsHeader": true,
+			"quoteChar": "\""
+		},
+		"schema": [
+			{
+				"name": "CategoryID",
+				"type": "String"
+			},
+			{
+				"name": "CategoryName",
+				"type": "String"
+			}
+		]
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

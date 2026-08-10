@@ -1,0 +1,138 @@
+{
+	"name": "Practice_pipeline",
+	"properties": {
+		"activities": [
+			{
+				"name": "lookup-practice",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": "SELECT *\nFROM ControlTable\nWHERE IsActive = 1;",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "SqlServerTable1",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "lookup-practice",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('lookup-practice').output.value",
+						"type": "Expression"
+					},
+					"isSequential": true,
+					"activities": [
+						{
+							"name": "If Condition1",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@and(\nnot(equals(item().DestinationTable,'Products_Json')),\nnot(equals(item().DestinationTable,'Customers_API'))\n)",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Copy data2",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "@if(\nequals(item().LoadType,'Incremental'),\nconcat(\n'SELECT * FROM ',\nitem().SchemaName,\n'.',\nitem().DestinationTable,\n' WHERE ',\nitem().WatermarkColumn,\n' > ''',\nitem().WatermarkValue,\n''''\n),\nconcat(\n'SELECT * FROM ',\nitem().SchemaName,\n'.',\nitem().DestinationTable\n)\n)",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "DelimitedTextSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings"
+												},
+												"formatSettings": {
+													"type": "DelimitedTextWriteSettings",
+													"quoteAllText": true,
+													"fileExtension": ".txt"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "copy_practice",
+												"type": "DatasetReference",
+												"parameters": {
+													"pSchemaName": "@item().SchemaName",
+													"pTableName": "@item().DestinationTable",
+													"pWatermarkColumn": "@item().WatermarkColumn",
+													"pWatermarkValue": "@item().WatermarkValue"
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "sink_Practice",
+												"type": "DatasetReference",
+												"parameters": {
+													"pSchemaName": "@item().SchemaName",
+													"pTableName": "@item().DestinationTable"
+												}
+											}
+										]
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-08-02T19:14:25Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

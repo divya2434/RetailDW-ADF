@@ -1,0 +1,298 @@
+{
+	"name": "PL_Master_Retail",
+	"properties": {
+		"activities": [
+			{
+				"name": "lookup_project",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": {
+							"value": "SELECT *\nFROM ControlTable\nWHERE IsActive = 1",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "control_dataset",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach_ControlTable",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "lookup_project",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('lookup_project').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "If_for_incremental",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(item().LoadType,'Incremental')",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Copy_FullLoad",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "@concat(\n'SELECT * FROM ',\nitem().SchemaName,\n'.',\nitem().SourceName\n)",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "DelimitedTextSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings"
+												},
+												"formatSettings": {
+													"type": "DelimitedTextWriteSettings",
+													"quoteAllText": true,
+													"fileExtension": ".txt"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "DS_SQLServer_Source",
+												"type": "DatasetReference",
+												"parameters": {
+													"pSchemaName": "@item().SchemaName",
+													"pTableName": "@item().SourceName"
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "DS_ADLS_Bronze",
+												"type": "DatasetReference",
+												"parameters": {
+													"pFolderName": {
+														"value": "dbo",
+														"type": "Expression"
+													},
+													"pFileName": "@concat(item().SourceName, '.csv')"
+												}
+											}
+										]
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Get_Max_Watermark",
+										"type": "Lookup",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "@concat(\n    'SELECT MAX(',\n    item().WatermarkColumn,\n    ') AS MaxWatermark FROM ',\n    item().SchemaName,\n    '.',\n    item().SourceName\n)",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"dataset": {
+												"referenceName": "DS_SQLServer_Source",
+												"type": "DatasetReference",
+												"parameters": {
+													"pSchemaName": "@item().SchemaName",
+													"pTableName": "@item().SourceName"
+												}
+											}
+										}
+									},
+									{
+										"name": "Copy_Incremental",
+										"type": "Copy",
+										"dependsOn": [
+											{
+												"activity": "Get_Max_Watermark",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "@concat(\n    'SELECT * FROM ',\n    item().SchemaName,\n    '.',\n    item().SourceName,\n    ' WHERE ',\n    item().WatermarkColumn,\n    ' > ''',\n    item().WatermarkValue,\n    ''''\n)",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "DelimitedTextSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings"
+												},
+												"formatSettings": {
+													"type": "DelimitedTextWriteSettings",
+													"quoteAllText": true,
+													"fileExtension": ".txt"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "DS_SQLServer_Source",
+												"type": "DatasetReference",
+												"parameters": {
+													"pSchemaName": "@item().SchemaName",
+													"pTableName": "@item().SourceName"
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "DS_ADLS_Bronze",
+												"type": "DatasetReference",
+												"parameters": {
+													"pFolderName": {
+														"value": "dbo",
+														"type": "Expression"
+													},
+													"pFileName": "@concat(item().SourceName, '.csv')"
+												}
+											}
+										]
+									},
+									{
+										"name": "Update_Watermark",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Copy_Incremental",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[usp_UpdateWatermark]",
+											"storedProcedureParameters": {
+												"TableName": {
+													"value": {
+														"value": "@item().SourceName",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"Watermark": {
+													"value": {
+														"value": "@activity('Get_Max_Watermark').output.firstRow.MaxWatermark",
+														"type": "Expression"
+													},
+													"type": "DateTime"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "SqlServer1",
+											"type": "LinkedServiceReference"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"variables": {
+			"v_TableName": {
+				"type": "String",
+				"defaultValue": "blank"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-10T17:26:39Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

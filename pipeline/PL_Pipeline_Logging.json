@@ -1,0 +1,188 @@
+{
+	"name": "PL_Pipeline_Logging",
+	"properties": {
+		"activities": [
+			{
+				"name": "Log_Success",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[dbo].[usp_InsertLog1]",
+					"storedProcedureParameters": {
+						"EndTime": {
+							"value": {
+								"value": "@pipeline().parameters.p_EndTime",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"ErrorMessage": {
+							"value": {
+								"value": "@pipeline().parameters.p_ErrorMessage",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().parameters.p_PipelineName",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RowsCopied": {
+							"value": {
+								"value": "v_ErrorMessage",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"StartTime": {
+							"value": {
+								"value": "@pipeline().parameters.p_StartTime",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": {
+								"value": "Success",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"TableName": {
+							"value": {
+								"value": "@pipeline().parameters.p_TableName",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "SqlServer1",
+					"type": "LinkedServiceReference"
+				}
+			},
+			{
+				"name": "Log_Failure",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[dbo].[usp_InsertLog1]",
+					"storedProcedureParameters": {
+						"EndTime": {
+							"value": {
+								"value": "@pipeline().parameters.p_EndTime",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"ErrorMessage": {
+							"value": {
+								"value": "Copy activity failed",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"PipelineName": {
+							"value": {
+								"value": "@pipeline().parameters.p_PipelineName",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RowsCopied": {
+							"value": " null",
+							"type": "String"
+						},
+						"StartTime": {
+							"value": {
+								"value": "@pipeline().parameters.p_StartTime",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"Status": {
+							"value": {
+								"value": "Failure",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"TableName": {
+							"value": {
+								"value": "@pipeline().parameters.p_TableName",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "SqlServer1",
+					"type": "LinkedServiceReference"
+				}
+			}
+		],
+		"parameters": {
+			"p_PipelineName": {
+				"type": "string",
+				"defaultValue": "@pipeline().parameters.p_PipelineName"
+			},
+			"p_TableName": {
+				"type": "string",
+				"defaultValue": "@pipeline().parameters.p_TableName"
+			},
+			"p_Status": {
+				"type": "string",
+				"defaultValue": "@pipeline().parameters.p_Status"
+			},
+			"p_StartTime": {
+				"type": "string",
+				"defaultValue": "@pipeline().parameters.p_StartTime"
+			},
+			"p_EndTime": {
+				"type": "string",
+				"defaultValue": "@pipeline().parameters.p_EndTime"
+			},
+			"p_ErrorMessage": {
+				"type": "string",
+				"defaultValue": null
+			},
+			"p_RunID": {
+				"type": "string",
+				"defaultValue": "@pipeline().RunId"
+			},
+			"p_RowsCopied": {
+				"type": "string",
+				"defaultValue": null
+			}
+		},
+		"variables": {
+			"StartTime": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-08-10T06:55:28Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}
