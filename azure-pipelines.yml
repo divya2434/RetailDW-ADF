@@ -1,0 +1,31 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+
+- task: UseNode@1
+  displayName: 'Install Node.js'
+  inputs:
+    version: '20.x'
+
+- script: |
+    npm install
+  displayName: 'Install ADF Utilities'
+
+- script: |
+    npm run build validate "$(Build.Repository.LocalPath)" "/subscriptions/6bffb135-8008-4de-bacf-0bea6051483f/resourceGroups/RG-RetailDW/providers/Microsoft.DataFactory/factories/retailadfdivya2026"
+  displayName: 'Validate ADF'
+
+- script: |
+    npm run build export "$(Build.Repository.LocalPath)" "/subscriptions/6bffb135-8008-4de-bacf-0bea6051483f/resourceGroups/RG-RetailDW/providers/Microsoft.DataFactory/factories/retailadfdivya2026" "ArmTemplate"
+  displayName: 'Generate ARM Template'
+
+- task: PublishPipelineArtifact@1
+  displayName: 'Publish ARM Template'
+  inputs:
+    targetPath: '$(Build.Repository.LocalPath)/ArmTemplate'
+    artifact: 'ArmTemplates'
+    publishLocation: 'pipeline'
