@@ -4,28 +4,86 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-steps:
+stages:
 
-- task: UseNode@1
-  displayName: 'Install Node.js'
-  inputs:
-    version: '20.x'
+- stage: CI
+  displayName: 'CI - Validate and Build ADF'
 
-- script: |
-    npm install
-  displayName: 'Install ADF Utilities'
+  jobs:
+  - job: BuildADF
+    displayName: 'Build ADF ARM Template'
 
-- script: |
-    npm run build validate "$(Build.Repository.LocalPath)" "/subscriptions/6bffb135-8008-4de-bacf-0bea6051483f/resourceGroups/RG-RetailDW/providers/Microsoft.DataFactory/factories/retailadfdivya2026"
-  displayName: 'Validate ADF'
+    steps:
 
-- script: |
-    npm run build export "$(Build.Repository.LocalPath)" "/subscriptions/6bffb135-8008-4de-bacf-0bea6051483f/resourceGroups/RG-RetailDW/providers/Microsoft.DataFactory/factories/retailadfdivya2026" "ArmTemplate"
-  displayName: 'Generate ARM Template'
+    - task: UseNode@1
+      displayName: 'Install Node.js'
+      inputs:
+        version: '20.x'
 
-- task: PublishPipelineArtifact@1
-  displayName: 'Publish ARM Template'
-  inputs:
-    targetPath: '$(Build.Repository.LocalPath)/ArmTemplate'
-    artifact: 'ArmTemplates'
-    publishLocation: 'pipeline'
+    - script: |
+        npm install
+      displayName: 'Install ADF Utilities'
+
+    - script: |
+        npm run build validate "$(Build.Repository.LocalPath)" "/subscriptions/6bffb135-8008-4de-bacf-0bea6051483f/resourceGroups/RG-RetailDW/providers/Microsoft.DataFactory/factories/retailadfdivya2026"
+      displayName: 'Validate ADF'
+
+    - script: |
+        npm run build export "$(Build.Repository.LocalPath)" "/subscriptions/6bffb135-8008-4de-bacf-0bea6051483f/resourceGroups/RG-RetailDW/providers/Microsoft.DataFactory/factories/retailadfdivya2026" "ArmTemplate"
+      displayName: 'Generate ARM Template'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish ARM Template'
+      inputs:
+        targetPath: '$(Build.Repository.LocalPath)/ArmTemplate'
+        artifact: 'ArmTemplates'
+        publishLocation: 'pipeline'
+
+
+- stage: Deploy_TEST
+  displayName: 'CD - Deploy to TEST'
+  dependsOn: CI
+  condition: succeeded()
+
+  jobs:
+  - deployment: DeployADFTest
+    displayName: 'Deploy ADF to TEST'
+
+    environment: 'TEST'
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - download: current
+            artifact: ArmTemplates
+            displayName: 'Download ARM Artifact'
+
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: 'Deploy ARM Template to TEST ADF'
+
+            inputs:
+              deploymentScope: 'Resource Group'
+
+              azureResourceManagerConnection: 'SC-RetailDW-Azure'
+
+              subscriptionId: '6bffb135-8008-4de-bacf-0bea6051483f'
+
+              action: 'Create Or Update Resource Group'
+
+              resourceGroupName: 'RG-RetailDW'
+
+              location: 'Central India'
+
+              templateLocation: 'Linked artifact'
+
+              csmFile: '$(Pipeline.Workspace)/ArmTemplates/ArmTemplate/ARMTemplateForFactory.json'
+
+              csmParametersFile: '$(Pipeline.Workspace)/ArmTemplates/ArmTemplate/ARMTemplateParametersForFactory.json'
+
+              overrideParameters: >
+                -factoryName "retailadfdivya2026-test"
+
+              deploymentMode: 'Incremental'
