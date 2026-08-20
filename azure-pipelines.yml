@@ -15,38 +15,34 @@ pr:
     include:
       - main
 
-
 # ============================================================
 # VARIABLES
 # ============================================================
 
 variables:
 
-  # Azure DevOps Service Connection
   azureServiceConnection: 'SC-RetailDW-Azure'
 
-  # Azure Subscription
   subscriptionId: '6bffb135-8008-4cde-bacf-0bea6051483f'
 
-  # Resource Group
   resourceGroupName: 'RG-RetailDW'
 
-  # ADF Name
   factoryName: 'retailadfdivya2026'
 
-  # Azure Region
   location: 'Central India'
 
-  # Artifact Name
   artifactName: 'drop'
 
-
 # ============================================================
-# STAGE 1 - CI
-# Validate and Publish ADF ARM Templates
+# STAGES
 # ============================================================
 
 stages:
+
+# ============================================================
+# STAGE 1 - CI
+# Validate and Export ADF ARM Template
+# ============================================================
 
 - stage: CI
   displayName: 'CI - Validate and Publish ADF'
@@ -68,46 +64,84 @@ stages:
     - checkout: self
       displayName: 'Checkout ADF Repository'
 
-
     # --------------------------------------------------------
     # Install Node.js
     # --------------------------------------------------------
 
-    - task: NodeTool@0
+    - task: UseNode@1
       displayName: 'Install Node.js'
-      inputs:
-        versionSpec: '18.x'
 
+      inputs:
+        version: '18.x'
 
     # --------------------------------------------------------
-    # Install ADF Utilities
+    # Initialize npm
     # --------------------------------------------------------
 
     - script: |
-        npm install -g @microsoft/azure-data-factory-utilities
-      displayName: 'Install ADF Utilities'
-
+        npm init -y
+      displayName: 'Initialize npm'
 
     # --------------------------------------------------------
-    # Validate ADF
+    # Install ADF Utilities Locally
+    # --------------------------------------------------------
+
+    - script: |
+        npm install @microsoft/azure-data-factory-utilities
+      displayName: 'Install ADF Utilities'
+
+    # --------------------------------------------------------
+    # Verify ADF Utilities Installation
+    # --------------------------------------------------------
+
+    - script: |
+        echo "Checking ADF Utilities installation..."
+
+        npm list @microsoft/azure-data-factory-utilities
+
+        dir node_modules\@microsoft\azure-data-factory-utilities
+      displayName: 'Verify ADF Utilities'
+
+    # --------------------------------------------------------
+    # Validate and Export ADF ARM Template
     # --------------------------------------------------------
 
     - script: |
         echo "Validating Azure Data Factory..."
-        
-        npm run build export "$(Build.SourcesDirectory)" "$(Build.ArtifactStagingDirectory)/ArmTemplate" "adf_publish"
+
+        npx adfutil build export ^
+          "$(Build.SourcesDirectory)" ^
+          "$(Build.ArtifactStagingDirectory)\ArmTemplate" ^
+          "adf_publish"
+
       displayName: 'Validate and Export ADF ARM Template'
 
+    # --------------------------------------------------------
+    # Verify ARM Template
+    # --------------------------------------------------------
+
+    - powershell: |
+
+        Write-Host "Checking generated ARM templates..."
+
+        Get-ChildItem `
+          -Path "$(Build.ArtifactStagingDirectory)\ArmTemplate" `
+          -Recurse
+
+      displayName: 'Verify ARM Template'
 
     # --------------------------------------------------------
-    # Publish ARM Template as Pipeline Artifact
+    # Publish ARM Template
     # --------------------------------------------------------
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish ADF ARM Artifact'
+
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)/ArmTemplate'
+
         artifact: '$(artifactName)'
+
         publishLocation: 'pipeline'
 
 
@@ -139,19 +173,28 @@ stages:
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download ADF ARM Artifact'
+
       inputs:
+
         buildType: 'current'
+
         artifactName: 'drop'
+
         targetPath: '$(Pipeline.Workspace)/drop'
 
 
     # --------------------------------------------------------
-    # Display Files - Optional Debug Step
+    # Verify ARM Files
     # --------------------------------------------------------
 
     - powershell: |
+
         Write-Host "Files available for deployment:"
-        Get-ChildItem -Path "$(Pipeline.Workspace)/drop" -Recurse
+
+        Get-ChildItem `
+          -Path "$(Pipeline.Workspace)/drop" `
+          -Recurse
+
       displayName: 'Verify ARM Template Files'
 
 
@@ -164,37 +207,25 @@ stages:
 
       inputs:
 
-        # Azure Resource Manager
         deploymentScope: 'Resource Group'
 
-        # IMPORTANT:
-        # This must exactly match Azure DevOps Service Connection
         azureResourceManagerConnection: 'SC-RetailDW-Azure'
 
-        # Azure Subscription
         subscriptionId: '6bffb135-8008-4cde-bacf-0bea6051483f'
 
-        # ARM Deployment Action
         action: 'Create Or Update Resource Group'
 
-        # Resource Group
         resourceGroupName: 'RG-RetailDW'
 
-        # Azure Region
         location: 'Central India'
 
-        # Template comes from downloaded artifact
         templateLocation: 'Linked artifact'
 
-        # ARM Template
         csmFile: '$(Pipeline.Workspace)/drop/ARMTemplateForFactory.json'
 
-        # ARM Parameters
         csmParametersFile: '$(Pipeline.Workspace)/drop/ARMTemplateParametersForFactory.json'
 
-        # Override ADF name
         overrideParameters: >
           -factoryName "$(factoryName)"
 
-        # Deployment Mode
         deploymentMode: 'Incremental'
