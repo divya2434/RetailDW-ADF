@@ -1,3 +1,18 @@
+# ============================================================
+# Azure DevOps CI/CD Pipeline - Azure Data Factory
+#
+# Project       : RetailDW-CICD
+# GitHub Repo   : divya2434/RetailDW-ADF
+# ADF           : retailadfdivya2026
+# Resource Group: RG-RetailDW
+# Environment   : TEST
+# ============================================================
+
+
+# ============================================================
+# TRIGGER
+# ============================================================
+
 trigger:
   branches:
     include:
@@ -8,49 +23,423 @@ pr:
     include:
       - main
 
+
+# ============================================================
+# VARIABLES
+# ============================================================
+
 variables:
+
+  # Azure DevOps Service Connection
+  azureServiceConnection: 'SC-RetailDW-Azure'
+
+  # Azure Subscription
+  subscriptionId: '6bffb135-8008-4cde-bacf-0bea6051483f'
+
+  # Resource Group
+  resourceGroupName: 'RG-RetailDW'
+
+  # Azure Data Factory
+  factoryName: 'retailadfdivya2026'
+
+  # Azure Region
+  location: 'Central India'
+
+  # CI Artifact
   artifactName: 'ArmTemplates'
+
+  # ADF source folder
+  # In your repository ADF files are assumed to be in root folder
+  adfRoot: '$(Build.SourcesDirectory)'
+
+
+# ============================================================
+# STAGES
+# ============================================================
 
 stages:
 
+
+# ============================================================
+# STAGE 1 - CI
+# Validate ADF + Generate ARM Template + Publish Artifact
+# ============================================================
+
 - stage: CI
+
   displayName: 'CI - Validate and Build ADF'
 
   jobs:
 
   - job: BuildADF
+
     displayName: 'Build ADF ARM Template'
+
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+
+
+    # ========================================================
+    # CI STEP 1 - CHECKOUT REPOSITORY
+    # ========================================================
+
+    - checkout: self
+
+      displayName: 'Checkout ADF Repository'
+
+
+    # ========================================================
+    # CI STEP 2 - INSTALL NODE.JS
+    # ========================================================
+
+    - task: UseNode@1
+
+      displayName: 'Install Node.js'
+
+      inputs:
+        version: '20.x'
+
+
+    # ========================================================
+    # CI STEP 3 - VERIFY REPOSITORY
+    # ========================================================
+
+    - bash: |
+
+        echo "=========================================="
+        echo "ADF Repository"
+        echo "=========================================="
+
+        echo "Repository path:"
+        echo "$(Build.SourcesDirectory)"
+
+        echo ""
+        echo "Repository files:"
+        find "$(Build.SourcesDirectory)" -maxdepth 3 -type f | head -200
+
+      displayName: 'Verify ADF Repository'
+
+
+    # ========================================================
+    # CI STEP 4 - CREATE package.json
+    # ========================================================
+    #
+    # ADF Utilities requires package.json containing
+    # the build command.
+    #
+    # Microsoft documented format:
+    #
+    # "build":
+    # "node node_modules/@microsoft/azure-data-factory-utilities/lib/index"
+    #
+    # ========================================================
+
+    - bash: |
+
+        cd "$(Build.SourcesDirectory)"
+
+        echo "Creating package.json..."
+
+        cat > package.json <<'EOF'
+        {
+          "scripts": {
+            "build": "node node_modules/@microsoft/azure-data-factory-utilities/lib/index"
+          },
+          "dependencies": {
+            "@microsoft/azure-data-factory-utilities": "^1.0.0"
+          }
+        }
+        EOF
+
+        echo ""
+        echo "package.json:"
+        cat package.json
+
+      displayName: 'Create package.json'
+
+
+    # ========================================================
+    # CI STEP 5 - INSTALL ADF UTILITIES
+    # ========================================================
+
+    - task: Npm@1
+
+      displayName: 'Install ADF Utilities'
+
+      inputs:
+
+        command: 'install'
+
+        workingDir: '$(Build.SourcesDirectory)'
+
+        verbose: true
+
+
+    # ========================================================
+    # CI STEP 6 - VERIFY NODE + NPM + ADF UTILITIES
+    # ========================================================
+
+    - bash: |
+
+        cd "$(Build.SourcesDirectory)"
+
+        echo "=========================================="
+        echo "Node Version"
+        echo "=========================================="
+
+        node --version
+
+        echo ""
+        echo "=========================================="
+        echo "NPM Version"
+        echo "=========================================="
+
+        npm --version
+
+        echo ""
+        echo "=========================================="
+        echo "ADF Utilities"
+        echo "=========================================="
+
+        npm list @microsoft/azure-data-factory-utilities
+
+      displayName: 'Verify ADF Utilities'
+
+
+    # ========================================================
+    # CI STEP 7 - VALIDATE + EXPORT ARM TEMPLATE
+    # ========================================================
+    #
+    # IMPORTANT:
+    # DO NOT use:
+    #
+    # npx adfutil
+    #
+    # DO NOT use:
+    #
+    # npx adf-util
+    #
+    # Correct Microsoft command:
+    #
+    # npm run build export
+    #
+    # ========================================================
+
+    - task: Npm@1
+
+      displayName: 'Validate and Export ADF ARM Template'
+
+      inputs:
+
+        command: 'custom'
+
+        workingDir: '$(Build.SourcesDirectory)'
+
+        customCommand: >
+          run build export
+          "$(adfRoot)"
+          "/subscriptions/$(subscriptionId)/resourceGroups/$(resourceGroupName)/providers/Microsoft.DataFactory/factories/$(factoryName)"
+          "ArmTemplate"
+
+
+    # ========================================================
+    # CI STEP 8 - VERIFY GENERATED ARM TEMPLATE
+    # ========================================================
+
+    - bash: |
+
+        echo "=========================================="
+        echo "Generated ARM Template Files"
+        echo "=========================================="
+
+        echo ""
+
+        find "$(Build.SourcesDirectory)/ArmTemplate" \
+          -type f \
+          -print
+
+        echo ""
+        echo "=========================================="
+        echo "ARM Template Directory"
+        echo "=========================================="
+
+        ls -lah "$(Build.SourcesDirectory)/ArmTemplate"
+
+      displayName: 'Verify ARM Template'
+
+
+    # ========================================================
+    # CI STEP 9 - PUBLISH ARTIFACT
+    # ========================================================
+
+    - task: PublishPipelineArtifact@1
+
+      displayName: 'Publish ADF ARM Artifact'
+
+      inputs:
+
+        targetPath: '$(Build.SourcesDirectory)/ArmTemplate'
+
+        artifact: '$(artifactName)'
+
+        publishLocation: 'pipeline'
+
+
+
+# ============================================================
+# STAGE 2 - CD
+# Download CI Artifact + Deploy ADF to TEST
+# ============================================================
+
+- stage: CD
+
+  displayName: 'CD - Deploy ADF to TEST'
+
+  dependsOn: CI
+
+  condition: succeeded()
+
+  jobs:
+
+  - job: DeployADF
+
+    displayName: 'Deploy ADF ARM Template to TEST'
 
     pool:
       vmImage: 'windows-latest'
 
     steps:
 
-    - checkout: self
-      displayName: 'Checkout ADF Repository'
 
-    - task: UseNode@1
-      displayName: 'Install Node.js'
+    # ========================================================
+    # CD STEP 1 - DOWNLOAD CI ARTIFACT
+    # ========================================================
+
+    - task: DownloadPipelineArtifact@2
+
+      displayName: 'Download ADF ARM Artifact'
+
       inputs:
-        version: '18.x'
 
-    - script: |
-        npm install --save-dev @microsoft/azure-data-factory-utilities
-      displayName: 'Install ADF Utilities'
+        buildType: 'current'
 
-    - script: |
-        echo "Validating and exporting Azure Data Factory..."
+        artifactName: 'ArmTemplates'
 
-        npx adfutil build export ^
-          "$(Build.SourcesDirectory)" ^
-          "$(Build.ArtifactStagingDirectory)\ArmTemplate" ^
-          "adf_publish"
+        targetPath: '$(Pipeline.Workspace)/ArmTemplates'
 
-      displayName: 'Validate and Export ADF ARM Template'
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish ADF ARM Artifact'
+    # ========================================================
+    # CD STEP 2 - VERIFY ARTIFACT
+    # ========================================================
+
+    - powershell: |
+
+        Write-Host "========================================"
+        Write-Host "Downloaded ADF ARM Template Files"
+        Write-Host "========================================"
+
+        Write-Host ""
+
+        Get-ChildItem `
+          -Path "$(Pipeline.Workspace)/ArmTemplates" `
+          -Recurse
+
+      displayName: 'Verify ARM Template Files'
+
+
+    # ========================================================
+    # CD STEP 3 - DEPLOY ARM TEMPLATE TO TEST
+    # ========================================================
+
+    - task: AzureResourceManagerTemplateDeployment@3
+
+      displayName: 'Deploy ADF ARM Template to TEST'
+
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)/ArmTemplate'
-        artifact: '$(artifactName)'
-        publishLocation: 'pipeline'
+
+
+        # ----------------------------------------------------
+        # Deployment Scope
+        # ----------------------------------------------------
+
+        deploymentScope: 'Resource Group'
+
+
+        # ----------------------------------------------------
+        # Azure DevOps Service Connection
+        # ----------------------------------------------------
+
+        azureResourceManagerConnection: 'SC-RetailDW-Azure'
+
+
+        # ----------------------------------------------------
+        # Azure Subscription
+        # ----------------------------------------------------
+
+        subscriptionId: '6bffb135-8008-4cde-bacf-0bea6051483f'
+
+
+        # ----------------------------------------------------
+        # Deployment Action
+        # ----------------------------------------------------
+
+        action: 'Create Or Update Resource Group'
+
+
+        # ----------------------------------------------------
+        # Resource Group
+        # ----------------------------------------------------
+
+        resourceGroupName: 'RG-RetailDW'
+
+
+        # ----------------------------------------------------
+        # Azure Location
+        # ----------------------------------------------------
+
+        location: 'Central India'
+
+
+        # ----------------------------------------------------
+        # Template Location
+        # ----------------------------------------------------
+
+        templateLocation: 'Linked artifact'
+
+
+        # ----------------------------------------------------
+        # ARM Template
+        # ----------------------------------------------------
+
+        csmFile: '$(Pipeline.Workspace)/ArmTemplates/ARMTemplateForFactory.json'
+
+
+        # ----------------------------------------------------
+        # ARM Template Parameters
+        # ----------------------------------------------------
+
+        csmParametersFile: '$(Pipeline.Workspace)/ArmTemplates/ARMTemplateParametersForFactory.json'
+
+
+        # ----------------------------------------------------
+        # Override Parameters
+        # ----------------------------------------------------
+
+        overrideParameters: >
+          -factoryName "$(factoryName)"
+
+
+        # ----------------------------------------------------
+        # Deployment Mode
+        # ----------------------------------------------------
+
+        deploymentMode: 'Incremental'
+
+
+        # ----------------------------------------------------
+        # Deployment Name
+        # ----------------------------------------------------
+
+        deploymentName: 'ADF-TEST-Deployment'
