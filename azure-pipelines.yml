@@ -15,6 +15,7 @@ pr:
     include:
       - main
 
+
 # ============================================================
 # VARIABLES
 # ============================================================
@@ -33,11 +34,13 @@ variables:
 
   artifactName: 'drop'
 
+
 # ============================================================
 # STAGES
 # ============================================================
 
 stages:
+
 
 # ============================================================
 # STAGE 1 - CI
@@ -45,133 +48,275 @@ stages:
 # ============================================================
 
 - stage: CI
+
   displayName: 'CI - Validate and Publish ADF'
 
   jobs:
 
   - job: BuildADF
+
     displayName: 'Build ADF ARM Template'
 
     pool:
       vmImage: 'windows-latest'
 
+
     steps:
 
-    # --------------------------------------------------------
-    # Checkout Repository
-    # --------------------------------------------------------
+
+    # ========================================================
+    # 1. CHECKOUT REPOSITORY
+    # ========================================================
 
     - checkout: self
+
       displayName: 'Checkout ADF Repository'
 
-    # --------------------------------------------------------
-    # Install Node.js
-    # --------------------------------------------------------
+
+    # ========================================================
+    # 2. INSTALL NODE.JS
+    # ========================================================
 
     - task: UseNode@1
+
       displayName: 'Install Node.js'
 
       inputs:
-        version: '18.x'
+        version: '20.x'
 
-    # --------------------------------------------------------
-    # Initialize npm
-    # --------------------------------------------------------
 
-    - script: |
-        npm init -y
-      displayName: 'Initialize npm'
-
-    # --------------------------------------------------------
-    # Install ADF Utilities Locally
-    # --------------------------------------------------------
-
-    - script: |
-        npm install @microsoft/azure-data-factory-utilities
-      displayName: 'Install ADF Utilities'
-
-    # --------------------------------------------------------
-    # Verify ADF Utilities Installation
-    # --------------------------------------------------------
-
-    - script: |
-        echo "Checking ADF Utilities installation..."
-
-        npm list @microsoft/azure-data-factory-utilities
-
-        dir node_modules\@microsoft\azure-data-factory-utilities
-      displayName: 'Verify ADF Utilities'
-
-    # --------------------------------------------------------
-    # Validate and Export ADF ARM Template
-    # --------------------------------------------------------
-
-    - script: |
-        echo "Validating Azure Data Factory..."
-
-        npx adfutil build export ^
-          "$(Build.SourcesDirectory)" ^
-          "$(Build.ArtifactStagingDirectory)\ArmTemplate" ^
-          "adf_publish"
-
-      displayName: 'Validate and Export ADF ARM Template'
-
-    # --------------------------------------------------------
-    # Verify ARM Template
-    # --------------------------------------------------------
+    # ========================================================
+    # 3. CREATE PACKAGE.JSON
+    # ========================================================
+    #
+    # This creates the npm configuration required by
+    # Azure Data Factory Utilities.
+    #
+    # ========================================================
 
     - powershell: |
 
-        Write-Host "Checking generated ARM templates..."
+        Write-Host "Creating package.json..."
+
+        Set-Location "$(Build.SourcesDirectory)"
+
+        $packageJson = @'
+        {
+          "name": "retaildw-adf-cicd",
+          "version": "1.0.0",
+          "private": true,
+          "scripts": {
+            "build": "node node_modules/@microsoft/azure-data-factory-utilities/lib/index"
+          },
+          "dependencies": {
+            "@microsoft/azure-data-factory-utilities": "^1.0.0"
+          }
+        }
+        '@
+
+        $packageJson | Out-File `
+          -FilePath "$(Build.SourcesDirectory)\package.json" `
+          -Encoding utf8
+
+        Write-Host "package.json created."
+
+        Get-Content "$(Build.SourcesDirectory)\package.json"
+
+      displayName: 'Create package.json'
+
+
+    # ========================================================
+    # 4. INSTALL ADF UTILITIES
+    # ========================================================
+
+    - task: Npm@1
+
+      displayName: 'Install ADF Utilities'
+
+      inputs:
+
+        command: 'install'
+
+        workingDir: '$(Build.SourcesDirectory)'
+
+        verbose: true
+
+
+    # ========================================================
+    # 5. VERIFY ADF UTILITIES
+    # ========================================================
+
+    - powershell: |
+
+        Write-Host "Checking Node.js version..."
+
+        node --version
+
+        Write-Host "Checking npm version..."
+
+        npm --version
+
+        Write-Host "Checking ADF Utilities..."
+
+        npm list @microsoft/azure-data-factory-utilities
+
+        Write-Host "Checking package folder..."
+
+        if (!(Test-Path "$(Build.SourcesDirectory)\node_modules\@microsoft\azure-data-factory-utilities")) {
+
+            Write-Error "ADF Utilities package was NOT installed."
+
+            exit 1
+        }
+
+        Write-Host "ADF Utilities installed successfully."
+
+      displayName: 'Verify ADF Utilities'
+
+
+    # ========================================================
+    # 6. DISPLAY ADF REPOSITORY STRUCTURE
+    # ========================================================
+
+    - powershell: |
+
+        Write-Host "ADF repository structure:"
+
+        Get-ChildItem `
+          -Path "$(Build.SourcesDirectory)" `
+          -Recurse `
+          -File |
+        Select-Object FullName
+
+      displayName: 'Verify ADF Repository'
+
+
+    # ========================================================
+    # 7. VALIDATE AND EXPORT ARM TEMPLATE
+    # ========================================================
+    #
+    # IMPORTANT:
+    #
+    # RootFolder:
+    # $(Build.SourcesDirectory)
+    #
+    # Factory ID:
+    # Azure resource ID of retailadfdivya2026
+    #
+    # Output:
+    # $(Build.ArtifactStagingDirectory)\ArmTemplate
+    #
+    # ========================================================
+
+    - task: Npm@1
+
+      displayName: 'Validate and Export ADF ARM Template'
+
+      inputs:
+
+        command: 'custom'
+
+        workingDir: '$(Build.SourcesDirectory)'
+
+        customCommand: >
+          run build export
+          "$(Build.SourcesDirectory)"
+          "/subscriptions/6bffb135-8008-4cde-bacf-0bea6051483f/resourceGroups/RG-RetailDW/providers/Microsoft.DataFactory/factories/retailadfdivya2026"
+          "$(Build.ArtifactStagingDirectory)/ArmTemplate"
+
+
+    # ========================================================
+    # 8. VERIFY ARM TEMPLATE
+    # ========================================================
+
+    - powershell: |
+
+        Write-Host "Checking generated ARM template..."
+
+        if (!(Test-Path "$(Build.ArtifactStagingDirectory)\ArmTemplate")) {
+
+            Write-Error "ArmTemplate folder was not created."
+
+            exit 1
+        }
+
+        Write-Host "Generated files:"
 
         Get-ChildItem `
           -Path "$(Build.ArtifactStagingDirectory)\ArmTemplate" `
           -Recurse
 
+
+        if (!(Test-Path "$(Build.ArtifactStagingDirectory)\ArmTemplate\ARMTemplateForFactory.json")) {
+
+            Write-Error "ARMTemplateForFactory.json was NOT generated."
+
+            exit 1
+        }
+
+        if (!(Test-Path "$(Build.ArtifactStagingDirectory)\ArmTemplate\ARMTemplateParametersForFactory.json")) {
+
+            Write-Error "ARMTemplateParametersForFactory.json was NOT generated."
+
+            exit 1
+        }
+
+        Write-Host "ARM templates generated successfully."
+
       displayName: 'Verify ARM Template'
 
-    # --------------------------------------------------------
-    # Publish ARM Template
-    # --------------------------------------------------------
+
+    # ========================================================
+    # 9. PUBLISH ARM TEMPLATE AS PIPELINE ARTIFACT
+    # ========================================================
 
     - task: PublishPipelineArtifact@1
+
       displayName: 'Publish ADF ARM Artifact'
 
       inputs:
+
         targetPath: '$(Build.ArtifactStagingDirectory)/ArmTemplate'
 
-        artifact: '$(artifactName)'
+        artifact: 'drop'
 
         publishLocation: 'pipeline'
 
 
+
 # ============================================================
 # STAGE 2 - CD
-# Deploy ADF to TEST
+# Deploy ADF ARM Template to TEST
 # ============================================================
 
 - stage: DeployADFTEST
+
   displayName: 'CD - Deploy ADF to TEST'
 
   dependsOn: CI
 
   condition: succeeded()
 
+
   jobs:
 
   - job: DeployADF
+
     displayName: 'Deploy ADF ARM Template to TEST'
 
     pool:
       vmImage: 'windows-latest'
 
+
     steps:
 
-    # --------------------------------------------------------
-    # Download CI Artifact
-    # --------------------------------------------------------
+
+    # ========================================================
+    # 1. DOWNLOAD CI ARTIFACT
+    # ========================================================
 
     - task: DownloadPipelineArtifact@2
+
       displayName: 'Download ADF ARM Artifact'
 
       inputs:
@@ -183,9 +328,9 @@ stages:
         targetPath: '$(Pipeline.Workspace)/drop'
 
 
-    # --------------------------------------------------------
-    # Verify ARM Files
-    # --------------------------------------------------------
+    # ========================================================
+    # 2. VERIFY DOWNLOADED FILES
+    # ========================================================
 
     - powershell: |
 
@@ -195,29 +340,49 @@ stages:
           -Path "$(Pipeline.Workspace)/drop" `
           -Recurse
 
+
+        if (!(Test-Path "$(Pipeline.Workspace)\drop\ARMTemplateForFactory.json")) {
+
+            Write-Error "ARMTemplateForFactory.json not found."
+
+            exit 1
+        }
+
+
+        if (!(Test-Path "$(Pipeline.Workspace)\drop\ARMTemplateParametersForFactory.json")) {
+
+            Write-Error "ARMTemplateParametersForFactory.json not found."
+
+            exit 1
+        }
+
+
+        Write-Host "ARM deployment files found successfully."
+
       displayName: 'Verify ARM Template Files'
 
 
-    # --------------------------------------------------------
-    # Deploy ARM Template to TEST
-    # --------------------------------------------------------
+    # ========================================================
+    # 3. DEPLOY ARM TEMPLATE TO TEST
+    # ========================================================
 
     - task: AzureResourceManagerTemplateDeployment@3
+
       displayName: 'Deploy ADF ARM Template to TEST'
 
       inputs:
 
         deploymentScope: 'Resource Group'
 
-        azureResourceManagerConnection: 'SC-RetailDW-Azure'
+        azureResourceManagerConnection: '$(azureServiceConnection)'
 
-        subscriptionId: '6bffb135-8008-4cde-bacf-0bea6051483f'
+        subscriptionId: '$(subscriptionId)'
 
         action: 'Create Or Update Resource Group'
 
-        resourceGroupName: 'RG-RetailDW'
+        resourceGroupName: '$(resourceGroupName)'
 
-        location: 'Central India'
+        location: '$(location)'
 
         templateLocation: 'Linked artifact'
 
